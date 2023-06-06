@@ -60,7 +60,7 @@ bcp_47 = json.load(open("resources/bcp47.json", encoding="utf-8"))
 bcp_47_langs = [x for x in bcp_47["subtags"] if x["type"] == "language"]
 
 prog_langs = json.load(open("resources/programming_languages.json", encoding="utf-8"))
-prog_langs = [x for x in prog_langs["itemListElement"]]
+prog_langs = list(prog_langs["itemListElement"])
 
 language_lists = json.load(open("resources/language_lists.json", encoding="utf-8"))
 MAX_LANGS = 25
@@ -161,10 +161,7 @@ def get_region_center(region_name):
 def get_region_countries(region_name):
     countries = []
     for name in region_tree[region_name]:
-        if name in region_tree:
-            countries += get_region_countries(name)
-        else:
-            countries += [name]
+        countries += get_region_countries(name) if name in region_tree else [name]
     return countries
 
 @st.cache(allow_output_mutation=True)
@@ -218,7 +215,11 @@ def make_choro_map(resource_counts, marker_thres=0):
 ## App utility functions
 ##################
 def load_catalogue():
-    catalogue_list = [json.load(open(fname, encoding="utf-8")) for fname in glob("entries/*.json") if not "-validated-" in fname]
+    catalogue_list = [
+        json.load(open(fname, encoding="utf-8"))
+        for fname in glob("entries/*.json")
+        if "-validated-" not in fname
+    ]
     catalogue = dict([(dct["uid"], dct) for dct in catalogue_list])
     catalogue[''] = {
         "uid": "",
@@ -237,7 +238,7 @@ def filter_entry(entry, filter_dct):
             if isinstance(v, dict):
                 res = res and filter_entry(v, filter_dct[k])
             elif isinstance(v, list):
-                res = res and (len(filter_dct[k]) == 0 or any([e in filter_dct[k] for e in v]))
+                res = res and (len(filter_dct[k]) == 0 or any(e in filter_dct[k] for e in v))
             else:
                 res = res and (len(filter_dct[k]) == 0 or v in filter_dct[k])
     return res
@@ -247,16 +248,23 @@ def can_save(entry_dct, submission_dct, adding_mode):
     if add_mode and (entry_dct['uid'] == "" or isfile(pjoin("entries", f"{entry_dct['uid']}.json"))):
         return False, f"There is already an entry with `uid` {entry_dct['uid']}, you need to give your entry a different one before saving. You can look at the entry with this `uid` by switching to the **Validate an existing entry** mode of this app in the left sidebar."
     if adding_mode and (submission_dct["submitted_by"] == "" or submission_dct["submitted_email"] == ""):
-        return False, f"Please enter a name (or pseudonym) and email in the left sidebar before submitting this entry. [Privacy policy](https://github.com/bigscience-workshop/data_sourcing/wiki/Required-User-Information-and-Privacy-Policy)"
+        return (
+            False,
+            "Please enter a name (or pseudonym) and email in the left sidebar before submitting this entry. [Privacy policy](https://github.com/bigscience-workshop/data_sourcing/wiki/Required-User-Information-and-Privacy-Policy)",
+        )
     if not adding_mode and submission_dct["validated_by"] == "":
-        return False, f"Please enter a name (or pseudonym) in the left sidebar before validating this entry."
-    if adding_mode and entry_dict["custodian"]["contact_submitter"] and submission_dct["submitted_email"] == "":
-        return False, f"You said that you would be willing to reach out to the entity or organization. To do so, please enter an email we can use to follow up in the left sidebar."
-    if not adding_mode and not all([v.get("validated", False) for k, v in entry_dict.items() if isinstance(v, dict)]):
-        unvalidated = [k for k, v in entry_dict.items() if isinstance(v, dict) and not v.get("validated", False)]
-        return False, f"Some of the fields haven't been validated: {unvalidated}"
-    else:
+        return (
+            False,
+            "Please enter a name (or pseudonym) in the left sidebar before validating this entry.",
+        )
+    if adding_mode or all(
+        v.get("validated", False)
+        for k, v in entry_dict.items()
+        if isinstance(v, dict)
+    ):
         return True, ""
+    unvalidated = [k for k, v in entry_dict.items() if isinstance(v, dict) and not v.get("validated", False)]
+    return False, f"Some of the fields haven't been validated: {unvalidated}"
 
 ##################
 ## streamlit
